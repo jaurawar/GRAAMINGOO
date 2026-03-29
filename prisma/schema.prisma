@@ -1,0 +1,487 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// GEOGRAPHY
+// ─────────────────────────────────────────────
+
+model Panchayat {
+  id                  String   @id @default(cuid())
+  name                String
+  sarpanchName        String?
+  communityTrustScore Float    @default(0)
+  totalRidesLogged    Int      @default(0)
+  district            String
+  state               String
+  createdAt           DateTime @default(now())
+
+  villages Village[]
+
+  @@map("panchayats")
+}
+
+model Village {
+  id          String    @id @default(cuid())
+  name        String
+  panchayatId String
+  district    String
+  state       String
+  lat         Float
+  lng         Float
+  createdAt   DateTime  @default(now())
+
+  panchayat   Panchayat @relation(fields: [panchayatId], references: [id])
+  users       User[]
+  tripLogs    CommunityTripLog[]
+
+  @@map("villages")
+}
+
+// ─────────────────────────────────────────────
+// USERS & DRIVERS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  BOTH
+}
+
+enum Language {
+  HINDI
+  MARATHI
+  KANNADA
+  TAMIL
+  TELUGU
+  BENGALI
+  GUJARATI
+  PUNJABI
+  ENGLISH
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  phone               String    @unique
+  name                String
+  role                UserRole  @default(PASSENGER)
+  villageId           String?
+  familyWitnessPhone  String?
+  preferredLanguage   Language  @default(HINDI)
+  isVerified          Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  village             Village?  @relation(fields: [villageId], references: [id])
+  driver              Driver?
+  otpCodes            OtpCode[]
+
+  // Rides as passenger
+  ridesAsPassenger    Ride[]    @relation("PassengerRides")
+
+  // Ratings given and received
+  ratingsGiven        Rating[]  @relation("RatingsGiven")
+  ratingsReceived     Rating[]  @relation("RatingsReceived")
+
+  // Known drivers (trusted contacts)
+  knownDrivers        KnownDriver[] @relation("PassengerKnownDrivers")
+
+  // Family alerts received on their witness number
+  familyAlerts        FamilyAlert[]
+
+  @@map("users")
+}
+
+enum VehicleType {
+  BIKE
+  AUTO
+  SUV
+  TEMPO
+}
+
+enum DriverPlan {
+  FREE
+  PREMIUM
+}
+
+model Driver {
+  id                    String      @id @default(cuid())
+  userId                String      @unique
+  vehicleType           VehicleType @default(AUTO)
+  vehicleNumber         String
+  licenseNumber         String
+  plan                  DriverPlan  @default(FREE)
+  subscriptionExpiresAt DateTime?
+  totalRidesAllTime     Int         @default(0)
+  ridesThisMonth        Int         @default(0)
+  isVerified            Boolean     @default(false)
+  isAvailable           Boolean     @default(false)
+  currentLat            Float?
+  currentLng            Float?
+  locationUpdatedAt     DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  registeredByPartnerId String?
+  registeredByPartner   VillagePartner? @relation("PartnerRegisteredDrivers", fields: [registeredByPartnerId], references: [id])
+
+  user                  User        @relation(fields: [userId], references: [id])
+  rides                 Ride[]
+  subscriptions         Subscription[]
+  villageTrust          VillageDriverTrust[]
+  knownByPassengers     KnownDriver[] @relation("DriverKnownRelations")
+  weddingPackages       WeddingPackage[]
+  tripLogs              CommunityTripLog[]
+
+  @@map("drivers")
+}
+
+// ─────────────────────────────────────────────
+// OTP AUTH
+// ─────────────────────────────────────────────
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("otp_codes")
+}
+
+// ─────────────────────────────────────────────
+// RIDES
+// ─────────────────────────────────────────────
+
+enum RideType {
+  STANDARD
+  EMERGENCY
+  CARGO
+  WEDDING
+}
+
+enum RideStatus {
+  REQUESTED
+  NEGOTIATING
+  ACCEPTED
+  STARTED
+  COMPLETED
+  CANCELLED
+}
+
+model Ride {
+  id               String      @id @default(cuid())
+  passengerId      String
+  driverId         String?
+  rideType         RideType    @default(STANDARD)
+  vehicleType      VehicleType @default(AUTO)
+
+  // Location
+  pickupLat        Float
+  pickupLng        Float
+  pickupAddress    String
+  dropLat          Float
+  dropLng          Float
+  dropAddress      String
+
+  // Status
+  status           RideStatus  @default(REQUESTED)
+
+  // Fares
+  distanceKm       Float
+  systemFare       Float       // calculated by pricing engine
+  driverQuotedFare Float?      // driver's quoted fare (within ±15%)
+  finalFare        Float?      // agreed upon fare
+
+  // Return trip
+  isReturnTrip     Boolean     @default(false)
+  parentRideId     String?     // if this is a return of another ride
+
+  // Commission
+  commissionRate   Float?      // 0.08, 0.05, 0.03, or 0.0
+  commissionAmount Float?
+
+  // Emergency fields
+  isEmergency      Boolean     @default(false)
+  emergencyFee     Float?      // +₹100 flat, locked
+
+  startedAt        DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  cancelReason     String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  passenger        User        @relation("PassengerRides", fields: [passengerId], references: [id])
+  driver           Driver?     @relation(fields: [driverId], references: [id])
+
+  negotiations     FareNegotiation[]
+  ratings          Rating[]
+  tripLog          CommunityTripLog?
+  familyAlerts     FamilyAlert[]
+  cargoBooking     CargoBooking?
+  weddingPackageId String?
+  weddingPackage   WeddingPackage? @relation("WeddingRides", fields: [weddingPackageId], references: [id])
+
+  @@map("rides")
+}
+
+// ─────────────────────────────────────────────
+// FARE NEGOTIATION
+// ─────────────────────────────────────────────
+
+enum NegotiationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model FareNegotiation {
+  id               String            @id @default(cuid())
+  rideId           String
+  round            Int               @default(1) // max 3 rounds
+  driverOffer      Float
+  passengerCounter Float?
+  acceptedFare     Float?
+  status           NegotiationStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
+  resolvedAt       DateTime?
+
+  ride             Ride              @relation(fields: [rideId], references: [id])
+
+  @@map("fare_negotiations")
+}
+
+// ─────────────────────────────────────────────
+// RATINGS & TRUST
+// ─────────────────────────────────────────────
+
+model Rating {
+  id        String   @id @default(cuid())
+  rideId    String
+  raterId   String
+  rateeId   String
+  score     Int      // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  ride      Ride     @relation(fields: [rideId], references: [id])
+  rater     User     @relation("RatingsGiven", fields: [raterId], references: [id])
+  ratee     User     @relation("RatingsReceived", fields: [rateeId], references: [id])
+
+  @@unique([rideId, raterId])
+  @@map("ratings")
+}
+
+model VillageDriverTrust {
+  id                  String   @id @default(cuid())
+  driverId            String
+  villageId           String
+  avgScore            Float    @default(0)
+  totalRidesInVillage Int      @default(0)
+  panchayatEndorsed   Boolean  @default(false)
+  endorsedAt          DateTime?
+  updatedAt           DateTime @updatedAt
+
+  driver              Driver   @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, villageId])
+  @@map("village_driver_trust")
+}
+
+enum TrustLevel {
+  FAMILIAR
+  TRUSTED
+}
+
+model KnownDriver {
+  id          String     @id @default(cuid())
+  passengerId String
+  driverId    String
+  trustLevel  TrustLevel @default(FAMILIAR)
+  firstRideAt DateTime   @default(now())
+
+  passenger   User       @relation("PassengerKnownDrivers", fields: [passengerId], references: [id])
+  driver      Driver     @relation("DriverKnownRelations", fields: [driverId], references: [id])
+
+  @@unique([passengerId, driverId])
+  @@map("known_drivers")
+}
+
+// ─────────────────────────────────────────────
+// COMMUNITY TRIP LOG
+// ─────────────────────────────────────────────
+
+model CommunityTripLog {
+  id           String   @id @default(cuid())
+  rideId       String   @unique
+  villageId    String
+  driverId     String
+  isPublic     Boolean  @default(false) // driver opt-in
+  routeSummary String   // e.g. "Rajpur → Nagpur, 22km"
+  vehicleType  VehicleType
+  loggedAt     DateTime @default(now())
+
+  ride         Ride     @relation(fields: [rideId], references: [id])
+  village      Village  @relation(fields: [villageId], references: [id])
+  driver       Driver   @relation(fields: [driverId], references: [id])
+
+  @@map("community_trip_log")
+}
+
+// ─────────────────────────────────────────────
+// WEDDING PACKAGES
+// ─────────────────────────────────────────────
+
+enum PackageStatus {
+  AVAILABLE
+  BOOKED
+  COMPLETED
+  CANCELLED
+}
+
+model WeddingPackage {
+  id                  String        @id @default(cuid())
+  driverId            String
+  title               String        // e.g. "3-Day Wedding Transport, Akola"
+  durationDays        Int
+  totalRidesIncluded  Int
+  quotedPrice         Float
+  status              PackageStatus @default(AVAILABLE)
+  passengerId         String?       // booked by whom
+  eventDate           DateTime?
+  eventVillage        String?
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  driver              Driver        @relation(fields: [driverId], references: [id])
+  rides               Ride[]        @relation("WeddingRides")
+
+  @@map("wedding_packages")
+}
+
+// ─────────────────────────────────────────────
+// CARGO (GRAAMIN CARGO)
+// ─────────────────────────────────────────────
+
+enum CargoType {
+  PRODUCE     // farm produce
+  GOODS       // general goods
+  EQUIPMENT   // farm equipment
+}
+
+model CargoBooking {
+  id         String    @id @default(cuid())
+  rideId     String    @unique
+  cargoType  CargoType @default(PRODUCE)
+  weightKg   Float?
+  mandiName  String?   // destination market
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  ride       Ride      @relation(fields: [rideId], references: [id])
+
+  @@map("cargo_bookings")
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTIONS
+// ─────────────────────────────────────────────
+
+enum PaymentMethod {
+  UPI
+  CASH
+  CARD
+  CSC  // Common Service Centre
+}
+
+model Subscription {
+  id            String        @id @default(cuid())
+  driverId      String
+  plan          DriverPlan    @default(PREMIUM)
+  amountPaid    Float         @default(599)
+  paidAt        DateTime      @default(now())
+  expiresAt     DateTime
+  paymentMethod PaymentMethod @default(UPI)
+  paymentId     String?       // Razorpay payment ID
+  isActive      Boolean       @default(true)
+
+  driver        Driver        @relation(fields: [driverId], references: [id])
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// VILLAGE PARTNERS
+// ─────────────────────────────────────────────
+
+model VillagePartner {
+  id                  String   @id @default(cuid())
+  name                String
+  phone               String   @unique
+  village             String
+  pinCode             String
+  district            String
+  state               String
+  isActive            Boolean  @default(true)
+  joinedAt            DateTime @default(now())
+  firstMonthFreeUntil DateTime
+
+  commissions         VillagePartnerCommission[]
+  registeredDrivers   Driver[] @relation("PartnerRegisteredDrivers")
+
+  @@map("village_partners")
+}
+
+model VillagePartnerCommission {
+  id                 String         @id @default(cuid())
+  partnerId          String
+  rideId             String         @unique
+  platformCommission Float          // total platform commission on the ride
+  partnerShare       Float          // 30% of platformCommission
+  settled            Boolean        @default(false)
+  settledAt          DateTime?
+  createdAt          DateTime       @default(now())
+
+  partner            VillagePartner @relation(fields: [partnerId], references: [id])
+
+  @@map("village_partner_commissions")
+}
+
+// ─────────────────────────────────────────────
+// FAMILY ALERTS
+// ─────────────────────────────────────────────
+
+enum AlertType {
+  TRIP_START
+  TRIP_END
+  EMERGENCY
+}
+
+model FamilyAlert {
+  id           String    @id @default(cuid())
+  rideId       String
+  passengerId  String
+  witnessPhone String
+  alertSentAt  DateTime  @default(now())
+  alertType    AlertType
+  delivered    Boolean   @default(false)
+
+  ride         Ride      @relation(fields: [rideId], references: [id])
+  passenger    User      @relation(fields: [passengerId], references: [id])
+
+  @@map("family_alerts")
+}

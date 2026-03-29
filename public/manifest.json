@@ -1,0 +1,42 @@
+{
+  "name": "Graamin Go",
+  "short_name": "GraaminGo",
+  "description": "Rural ride-hailing for Bharat — ग्रामीण गो",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8F0",
+  "theme_color": "#2D6A4F",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book a Ride",
+      "url": "/book",
+      "description": "Quickly book a ride"
+    },
+    {
+      "name": "Emergency Ride",
+      "url": "/emergency",
+      "description": "Emergency ride at locked fare"
+    },
+    {
+      "name": "Graamin Cargo",
+      "url": "/cargo",
+      "description": "Farm-to-mandi cargo booking"
+    }
+  ],
+  "categories": ["transportation", "utilities"],
+  "lang": "hi"
+}

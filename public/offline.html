@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graamin Go — Offline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #FFF8F0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .icon { font-size: 64px; margin-bottom: 16px; }
+    h1 { color: #2D6A4F; font-size: 22px; margin-bottom: 8px; }
+    p { color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 8px; }
+    .wa-box {
+      margin-top: 24px;
+      background: #D8F3DC;
+      border-radius: 16px;
+      padding: 16px;
+      width: 100%;
+      max-width: 320px;
+    }
+    .wa-box p { color: #2D6A4F; font-weight: 600; margin-bottom: 4px; }
+    .wa-box small { color: #40916C; font-size: 12px; }
+    .retry-btn {
+      margin-top: 20px;
+      background: #2D6A4F;
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">📵</div>
+  <h1>No Internet Connection</h1>
+  <p>Graamin Go needs internet to find drivers near you.</p>
+  <p>If you have already booked a ride, it's been saved and will be submitted when you're back online.</p>
+
+  <div class="wa-box">
+    <p>📲 Book via WhatsApp</p>
+    <small>Send "Book" to our WhatsApp number to book even on 2G</small>
+  </div>
+
+  <button class="retry-btn" onclick="window.location.reload()">
+    Try Again
+  </button>
+
+  <script>
+    window.addEventListener('online', () => {
+      // Trigger service worker queue replay
+      navigator.serviceWorker.controller?.postMessage('REPLAY_QUEUE');
+      window.location.reload();
+    });
+  </script>
+</body>
+</html>
